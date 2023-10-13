@@ -2,7 +2,7 @@
 Bootstrap for booting DS Firmware SRL (for DSi/3DS mainly)
 
 
-This boottrap program for DS/DSi/3DS that can boot firmware.nds file from SD.
+This bootstrap program for DS/DSi/3DS that can boot firmware.nds file from SD.
 The main purpose this program serves is to allow the currently inserted cart in slot1 to show up in the menu!
 Inserted carts can be launched but as of v1.0 all carts currently white screen for unknown reasons.
 
