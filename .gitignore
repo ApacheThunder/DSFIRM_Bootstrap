@@ -1,0 +1,14 @@
+BootLoader/load.bin
+BootLoader/build/
+BootLoader/data/
+data/
+title/
+arm7/build/
+arm9/build/
+arm9/data/
+*.cia
+*.cmd
+*.nds
+*.dsi
+*.app
+*.elf
