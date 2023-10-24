@@ -39,7 +39,8 @@ enum ERROR_CODES {
 	ERR_SEC_OTHR = 0x14,
 	ERR_LOGO_CRC = 0x15,
 	ERR_HEAD_CRC = 0x16,
-	ERR_STS_STARTBIN = 0x21,
+	ERR_FIRMNOTFOUND = 0x17,
+	ERR_STS_STARTBIN = 0x21
 };
 
 // Values fixed so they can be shared with ASM code

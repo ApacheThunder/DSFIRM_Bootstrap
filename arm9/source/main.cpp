@@ -2,10 +2,14 @@
 #include <nds/arm9/console.h>
 #include <stdio.h>
 #include <fat.h>
+#include <limits.h>
+#include <sys/stat.h>
 
 #include "launch_engine.h"
 #include "read_card.h"
 #include "nds_card.h"
+
+#define NDS_HEADER 0x027FFE00
 
 extern PrintConsole* currentConsole;
 
@@ -52,23 +56,14 @@ int main(void) {
 	}
 	
 	if (isDSiMode() && (REG_SCFG_EXT & BIT(31))) {
-		bool CartWasMissing = false;
+		bool CartWasMissing = (REG_SCFG_MC == 0x11);
 		
-		if (REG_SCFG_MC != 0x18) {
-			consoleClear();
-			printf("        Insert Cartridge        ");
-			if (!CartWasMissing)CartWasMissing = true;
+		if (!CartWasMissing) {
+			sNDSHeaderExt* ndsHeaderExt = (sNDSHeaderExt*)NDS_HEADER;
+			
+			if (REG_SCFG_MC == 0x10)enableSlot1();
+			cardInit(ndsHeaderExt);
 		}
-		while (REG_SCFG_MC != 0x18)DoCartCheck();
-		
-		// Delay half a second for the DS card to stabilise
-		if (CartWasMissing) { 
-			consoleClear();
-			DoWait();
-		}
-		
-		ALIGN(4) sNDSHeaderExt* ndsHeaderExt = (sNDSHeaderExt*)malloc(sizeof(sNDSHeaderExt));
-		cardInit(ndsHeaderExt);
 	}
 
 	if(access("/firmware.nds", F_OK) != 0) {
@@ -79,29 +74,21 @@ int main(void) {
 	}
 	
 	// Set console to NTR ram layout (if possible) before we put stuff in ram.
-	if (REG_SCFG_EXT & BIT(31)) {
+	/*if (REG_SCFG_EXT & BIT(31)) {
 		REG_SCFG_EXT &= ~(1UL << 14); // TWL RAM DISABLE 1
 		REG_SCFG_EXT &= ~(1UL << 15); // TWL RAM DISABLE 2
 		DoWait(10);
-	}
+	}*/
 
-	FILE *firmFile = fopen("/firmware.nds", "rb");
-	ALIGN(4) tNDSHeader* srcNdsHeader = (tNDSHeader*)malloc(sizeof(tNDSHeader));
-	fread(srcNdsHeader, sizeof(tNDSHeader), 1, firmFile);
+	const char* filename = "/firmware.nds";
+	struct stat st;
+	char filePath[PATH_MAX];
+	int pathLen;
 	
-	if((srcNdsHeader->arm9binarySize > 0x80000) || (srcNdsHeader->arm7binarySize > 0xC000)) {
-		consoleClear();
-		printf("  Firmware binaries too large!  ");
-		while(1);
-	}
+	if ((!getcwd (filePath, PATH_MAX)) || (stat (filename, &st) < 0))return 0;
 	
-	fseek(firmFile, srcNdsHeader->arm9romOffset, SEEK_SET);
-	fread((void*)0x02100000, 1, srcNdsHeader->arm9binarySize, firmFile);
-	DoWait(5);
-	fseek(firmFile, srcNdsHeader->arm7romOffset, SEEK_SET);
-	fread((void*)0x02180000, 1, srcNdsHeader->arm7binarySize, firmFile);
-	
-	fclose(firmFile);
+	pathLen = strlen(filename);
+	strcpy (filePath + pathLen, filename);
 	
 	if (!isDSiMode() || !(REG_SCFG_EXT & BIT(31))) {
 		u32 ndsHeader[0x80];
@@ -121,7 +108,7 @@ int main(void) {
 		consoleClear();
 	}
 	
-	runLaunchEngine();
+	runLaunchEngine(st.st_ino);
 	
 	while(1)swiWaitForVBlank();
 	return 0;

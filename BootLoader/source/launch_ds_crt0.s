@@ -1,12 +1,19 @@
 @---------------------------------------------------------------------------------
 	.section ".init"
 	.global _start
+	.global storedFileCluster
 @---------------------------------------------------------------------------------
 	.align	4
 	.arm
 @---------------------------------------------------------------------------------
 _start:
 @---------------------------------------------------------------------------------
+	b	startUp
+
+storedFileCluster:
+	.word	0x0FFFFFFF		@ default FIRMWARE.NDS
+
+startUp:
 	mov	r0, #0x04000000		@ IME = 0;
 	add	r0, r0, #0x208
 	strh	r0, [r0]
@@ -36,7 +43,7 @@ _start:
 	bl	CopyMem
 
 @ Start ARM9 binary
-	ldr	r0, =0x027FFE24	
+	ldr	r0, =0x027FFE24
 	ldr	r1, =_arm9_start
 	str	r1, [r0]
 

@@ -60,6 +60,7 @@ static char ERRTXT_SEC_NORM[] = "SECURE NORMAL";
 static char ERRTXT_SEC_OTHR[] = "SECURE OTHER";
 static char ERRTXT_LOGO_CRC[] = "LOGO CRC";
 static char ERRTXT_HEAD_CRC[] = "HEADER CRC";
+static char ERRTXT_FIRM[] = "FIRMWARE FAIL";
 static char NEW_LINE[] = "\n";
 	
 /*-------------------------------------------------------------------------
@@ -136,6 +137,12 @@ static void arm9_errorOutput (u32 code) {
 			Print(TXT_ERROR);
 			Print(ERRTXT_HEAD_CRC);
 		} break;
+		case (ERR_FIRMNOTFOUND) : {
+			BG_PALETTE_SUB[defaultFontPalSlot] = 0x801B;
+			Print(TXT_ERROR);
+			Print(ERRTXT_FIRM);
+		} break;
+		
 	}
 }
 
@@ -147,6 +154,18 @@ Jumps to the ARM9 NDS binary in sync with the  ARM7
 Written by Darkain, modified by Chishm
 --------------------------------------------------------------------------*/
 void arm9_main (void) {
+	if (REG_SCFG_EXT & BIT(31)) {
+		// Standard NTR Mode MBK setup
+		*((vu32*)REG_MBK1)=0x8D898581;
+		*((vu32*)REG_MBK2)=0x91898581;
+		*((vu32*)REG_MBK3)=0x91999591;
+		*((vu32*)REG_MBK4)=0x91898581;
+		*((vu32*)REG_MBK5)=0x91999591;
+		REG_MBK6 = 0x00003000;
+		REG_MBK7 = 0x00003000;
+		REG_MBK8 = 0x00003000;
+	}
+	
 	#ifdef DEBUGMODE
 	consoleDebugMode = true;
 	#endif
@@ -155,8 +174,7 @@ void arm9_main (void) {
 
 	//set shared ram to ARM7
 	WRAM_CR = 0x03;
-	REG_EXMEMCNT = 0xE880;
-
+	
 	// Disable interrupts
 	REG_IME = 0;
 	REG_IE = 0;
@@ -183,7 +201,8 @@ void arm9_main (void) {
 
 	(*(vu32*)0x00803FFC) = 0;   //IRQ_HANDLER ARM9 version
 	(*(vu32*)0x00803FF8) = ~0;  //VBLANK_INTR_WAIT_FLAGS ARM9 version
-
+	
+	
 	// Clear out FIFO
 	REG_IPC_FIFO_CR = IPC_FIFO_ENABLE | IPC_FIFO_SEND_CLEAR;
 	REG_IPC_FIFO_CR = 0;
@@ -240,7 +259,8 @@ void arm9_main (void) {
 	BG_PALETTE_SUB[0] = 0xFFFF;
 	dmaFill((void*)&arm9_BLANK_RAM, BG_PALETTE+1, (2*1024)-2);
 	dmaFill((void*)&arm9_BLANK_RAM, OAM,     2*1024);
-	dmaFill((void*)&arm9_BLANK_RAM, VRAM_A,  256*1024);		// Banks A, B
+	dmaFill((void*)&arm9_BLANK_RAM, VRAM_A,  272*1024);		// Banks A, B, C
+	// dmaFill((void*)&arm9_BLANK_RAM, VRAM_A,  256*1024);
 	// dmaFill((void*)&arm9_BLANK_RAM, VRAM_D,  272*1024);		// Banks D, E, F, G, H, I
 
 	// Clear out display registers
@@ -253,6 +273,13 @@ void arm9_main (void) {
 	VRAM_A_CR = 0;
 	VRAM_C_CR = 0;
 	REG_POWERCNT  = 0x820F;
+	REG_EXMEMCNT = 0xE880;
+
+	// REG_SCFG_EXT = 0x03000000;
+	/*REG_SCFG_EXT &= ~(1UL << 13);
+	REG_SCFG_EXT &= ~(1UL << 14);
+	REG_SCFG_EXT &= ~(1UL << 15);*/
+	REG_SCFG_EXT &= ~(1UL << 31);
 	arm9_reset();
 }
 

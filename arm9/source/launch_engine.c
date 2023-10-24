@@ -24,6 +24,16 @@
 
 #define BOOTLOADER_ARM7LOCATION 0x06020000
 
+#define STORED_FILE_CLUSTER_OFFSET 4
+
+typedef signed int addr_t;
+typedef unsigned char data_t;
+
+static void writeAddr (data_t *mem, addr_t offset, addr_t value) {
+	((addr_t*)mem)[offset/sizeof(addr_t)] = value;
+}
+
+
 static void vramset (volatile void* dst, u16 val, int len) {
 	vu32* dst32 = (vu32*)dst;
 	u32 val32 = val | (val << 16);
@@ -36,17 +46,15 @@ static void vramcpy (volatile void* dst, const void* src, int len) {
 	for ( ; len > 0; len -= 4) { *dst32++ = *src32++; }
 }
 
-void runLaunchEngine() {
+void runLaunchEngine(u32 fileCluster) {
 	
 	if (REG_SCFG_EXT & BIT(31)) {
-		REG_MBK6 = 0x00003000;
-		REG_MBK7 = 0x00003000;
-		REG_MBK8 = 0x00003000;
 		REG_SCFG_CLK = 0x80;
-		REG_SCFG_EXT = 0x03000000;
-		for (int i = 0; i < 30; i++)swiWaitForVBlank();
+		// REG_SCFG_EXT = 0x8304E000;
+		REG_SCFG_EXT = 0x83000000;
+		// for (int i = 0; i < 30; i++)swiWaitForVBlank();
 	}
-	
+
 	irqDisable(IRQ_ALL);
 	// Direct CPU access to VRAM bank D
 	VRAM_D_CR = VRAM_ENABLE | VRAM_D_LCD;
@@ -57,11 +65,15 @@ void runLaunchEngine() {
 	// Load the loader/patcher into the correct address
 	vramcpy (LCDC_BANK_D, load_bin, load_bin_size);
 	
+	// Set the parameters for the loader
+	writeAddr ((data_t*) LCDC_BANK_D, STORED_FILE_CLUSTER_OFFSET, fileCluster);
+	
 	// Give the VRAM to the ARM7
 	VRAM_D_CR = VRAM_ENABLE | VRAM_D_ARM7_0x06020000;
 		
 	// Reset into a passme loop
 	REG_EXMEMCNT = 0xFFFF;
+	// REG_EXMEMCNT |= ARM7_OWNS_ROM | ARM7_OWNS_CARD;
 	*((vu32*)0x027FFFFC) = 0;
 	*((vu32*)0x027FFE04) = (u32)0xE59FF018;
 	*((vu32*)0x027FFE24) = (u32)0x027FFE04;

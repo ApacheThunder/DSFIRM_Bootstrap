@@ -29,7 +29,8 @@
 #define CARD_DATA_OFFSET (0x8000)
 #define CARD_DATA_BLOCK_SIZE (0x200)
 
-typedef struct {
+
+typedef struct sNDSHeaderExt {
 	char gameTitle[12];			//!< 12 characters for the game title.
 	char gameCode[4];			//!< 4 characters for the game code.
 	char makercode[2];			//!< identifies the (commercial) developer.
@@ -119,9 +120,10 @@ typedef struct {
 	u32 pubSavSize;
 	u32 prvSavSize;
 	u8 dsi3[0x174];
-} sNDSHeaderExt;
+} tNDSHeaderExt;
 
-int cardInit (sNDSHeaderExt* ndsHeader, u32* chipID);
+
+int cardInit (tNDSHeaderExt* ndsHeader, u32* chipID);
 
 void cardRead (u32 src, u32* dest, size_t size);
 
