@@ -26,7 +26,7 @@ extern "C" {
 #endif
 
 
-void runLaunchEngine (u32 fileCluster);
+void runLaunchEngine ();
 
 
 #ifdef __cplusplus

@@ -64,7 +64,7 @@ arm7_reset:
 	@ ipcSendState(ARM7_BOOT)
 	strh	r0, [r12]
 	
-	ldr	r0,=0x27FC034
+	ldr	r0,=0x027FC034
 
 	ldr	r0,[r0]
 	bx	r0

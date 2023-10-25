@@ -26,6 +26,20 @@
 #define resetCpu() \
 		__asm volatile("swi 0x000000")
 
+typedef struct sFirmData {
+	u32 firmA9Location;
+	u32 firmA9Destination;
+	u32 firmA9Entry;
+	u32 firmA9Size;
+	u32 firmA7Location;
+	u32 firmA7Destination;
+	u32 firmA7Entry;
+	u32 firmA7Size;
+	u8 builtInFirm;
+	u8 hasCart;
+	unsigned long storedFileCluster;
+} tFirmData;
+
 enum ERROR_CODES {
 	ERR_NONE = 0x00,
 	ERR_STS_CLR_MEM = 0x01,

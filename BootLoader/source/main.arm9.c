@@ -155,11 +155,10 @@ Written by Darkain, modified by Chishm
 --------------------------------------------------------------------------*/
 void arm9_main (void) {
 	if (REG_SCFG_EXT & BIT(31)) {
-		// Standard NTR Mode MBK setup
 		*((vu32*)REG_MBK1)=0x8D898581;
 		*((vu32*)REG_MBK2)=0x91898581;
 		*((vu32*)REG_MBK3)=0x91999591;
-		*((vu32*)REG_MBK4)=0x91898581;
+		*((vu32*)REG_MBK4)=0x81858991;
 		*((vu32*)REG_MBK5)=0x91999591;
 		REG_MBK6 = 0x00003000;
 		REG_MBK7 = 0x00003000;
@@ -275,10 +274,9 @@ void arm9_main (void) {
 	REG_POWERCNT  = 0x820F;
 	REG_EXMEMCNT = 0xE880;
 
-	// REG_SCFG_EXT = 0x03000000;
-	/*REG_SCFG_EXT &= ~(1UL << 13);
+	REG_SCFG_EXT &= ~(1UL << 13);
 	REG_SCFG_EXT &= ~(1UL << 14);
-	REG_SCFG_EXT &= ~(1UL << 15);*/
+	REG_SCFG_EXT &= ~(1UL << 15);
 	REG_SCFG_EXT &= ~(1UL << 31);
 	arm9_reset();
 }

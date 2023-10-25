@@ -60,20 +60,27 @@ extern void arm7_reset (void);
 #define NDS_HEADER_POKEMON	0x027FF000
 #define TWL_HEADER			0x027FE000
 #define TMP_HEADER			0x027FC000
-// #define NTR_CARTARM9 0x02320000 // This is actually the firmware's bin location?
-// #define NTR_CARTARM9ALT 0x02200000
-// #define NTR_CARTARM9 0x02004000
-#define NTR_CARTARM9 0x02200000
-#define NTR_CARTARM7 0x022C0000
+
+#define NTR_CARTARM7 0x022C0000 // DS firmware expects arm7 binary for cart loaded here instead of intended location.
 #define REG_GPIO_WIFI *(vu16*)0x4004C04
 #define BASE_DELAY (100)
 
 tNDSHeader* ndsHeader;
-tNDSHeader* tmpHeader = (tNDSHeader*)NDS_HEADER_POKEMON;
-
+tFirmData* firmData = (tFirmData*)0x027FC000;
 
 static u32 chipID;
-extern unsigned long storedFileCluster;
+
+u32 firmA9Location;
+u32 firmA9Destination;
+u32 firmA9Entry;
+u32 firmA9Size;
+u32 firmA7Location;
+u32 firmA7Destination;
+u32 firmA7Entry;
+u32 firmA7Size;
+bool builtInFirm;
+bool hasCart;
+unsigned long storedFileCluster;
 
 void arm7clearRAM();
 
@@ -324,7 +331,9 @@ void arm7_resetMemory () {
 	REG_IPC_FIFO_CR = IPC_FIFO_ENABLE | IPC_FIFO_SEND_CLEAR;
 	REG_IPC_FIFO_CR = 0;
 
-	arm7clearRAM();
+	if (!builtInFirm)arm7clearRAM();
+	
+	// (*(vu32*)0x037FE284) = 0;
 	
 	arm7_clearmem((u32*)NDS_HEADER, 0x170);
 	arm7_clearmem((u32*)NDS_HEADER_POKEMON, 0x170);
@@ -357,33 +366,41 @@ void arm7_resetMemory () {
 }
 
 void arm7_loadFirmBinary (aFile* file) {
-	u32 firmHeader[0x170>>2];
-
-	// read NDS header
-	fileRead ((char*)firmHeader, file, 0, 0x40);
-	// read ARM9 info from NDS header
-	u32 ARM9_SRC = firmHeader[0x020>>2];
-	char* ARM9_DST = (char*)firmHeader[0x028>>2];
-	u32 ARM9_LEN = firmHeader[0x02C>>2];
-	// read ARM7 info from NDS header
-	u32 ARM7_SRC = firmHeader[0x030>>2];
-	char* ARM7_DST = (char*)firmHeader[0x038>>2];
-	u32 ARM7_LEN = firmHeader[0x03C>>2];
-	
-	// Load binaries into memory
-	fileRead(ARM9_DST, file, ARM9_SRC, ARM9_LEN);
-	fileRead(ARM7_DST, file, ARM7_SRC, ARM7_LEN);
-
-	// first copy the header to its proper location, excluding
-	// the ARM9 start address, so as not to start it
-	*((vu32*)0x027FC024) = firmHeader[0x024>>2];
-	*((vu32*)0x027FC034) = firmHeader[0x034>>2];
+	if (builtInFirm) {
+		if (firmA9Destination != (u32)0x02100000) {
+			tonccpy((u32*)firmA9Destination, (u32*)firmA9Location, firmA9Size);
+			arm7_clearmem((u32*)firmA9Location, firmA9Size);
+		}
+		tonccpy((u32*)firmA7Destination, (u32*)firmA7Location, firmA7Size);
+		arm7_clearmem((u32*)firmA7Location, firmA7Size);
+		*((vu32*)0x027FC024) = firmA9Entry;
+		*((vu32*)0x027FC034) = firmA7Entry;
+	} else {
+		u32 firmHeader[0x170>>2];
+		// read NDS header
+		fileRead ((char*)firmHeader, file, 0, 0x40);
+		// read ARM9 info from NDS header
+		u32 ARM9_SRC = firmHeader[0x020>>2];
+		char* ARM9_DST = (char*)firmHeader[0x028>>2];
+		u32 ARM9_LEN = firmHeader[0x02C>>2];
+		// read ARM7 info from NDS header
+		u32 ARM7_SRC = firmHeader[0x030>>2];
+		char* ARM7_DST = (char*)firmHeader[0x038>>2];
+		u32 ARM7_LEN = firmHeader[0x03C>>2];
+		// Load binaries into memory
+		fileRead(ARM9_DST, file, ARM9_SRC, ARM9_LEN);
+		fileRead(ARM7_DST, file, ARM7_SRC, ARM7_LEN);
+		// first copy the header to its proper location, excluding
+		// the ARM9 start address, so as not to start it
+		*((vu32*)0x027FC024) = firmHeader[0x024>>2];
+		*((vu32*)0x027FC034) = firmHeader[0x034>>2];
+	}
 }
 
 u32 arm7_loadBinary (void) {
 	u32 errorCode;
-	
-	tDSiHeader* twlHeaderTemp = (tDSiHeader*)NDS_HEADER_POKEMON; // Use same region cheat engine goes. Cheat engine will replace this later when it's not needed.
+
+	tDSiHeader* twlHeaderTemp = (tDSiHeader*)TMP_HEADER;
 
 	// Init card
 	errorCode = cardInit((tNDSHeaderExt*)twlHeaderTemp, &chipID);
@@ -391,16 +408,16 @@ u32 arm7_loadBinary (void) {
 
 	ndsHeader = loadHeader(twlHeaderTemp); // copy twlHeaderTemp to ndsHeader location
 
-	if ((u32)ndsHeader->arm9destination != 0x02000000) {
-		cardRead(ndsHeader->arm9romOffset, (u32*)NTR_CARTARM9, ndsHeader->arm9binarySize);
-	} else {
-		cardRead(ndsHeader->arm9romOffset, (u32*)ndsHeader->arm9destination, ndsHeader->arm9binarySize);
-	}
+	u32 Arm9Size = ndsHeader->arm9binarySize;
+	u32 MaxArm9Size = 0x09FFFF; // DS firwmare appears able to relocate it self if the cart's arm binary would be large enough to over write it... but that doesn't seem to happen in our case so must cap arm9 reads for now.
+	
+	if (Arm9Size > MaxArm9Size)Arm9Size = MaxArm9Size;
+	
+	cardRead(ndsHeader->arm9romOffset, (u32*)ndsHeader->arm9destination, Arm9Size);
 	cardRead(ndsHeader->arm7romOffset, (u32*)NTR_CARTARM7, ndsHeader->arm7binarySize);
 	
 	// Fix Pokemon games needing header data.
 	copyLoop((u32*)NDS_HEADER_POKEMON, (u32*)NDS_HEADER, 0x170);
-	copyLoop((u32*)0x023FFE00, (u32*)NDS_HEADER, 0x170);
 
 	char* romTid = (char*)NDS_HEADER_POKEMON+0xC;
 	if (   memcpy(romTid, "ADA", 3) == 0 // Diamond
@@ -452,6 +469,8 @@ static void setMemoryAddress(const tNDSHeader* ndsHeader) {
 	*((u16*)0x027FF808) = ndsHeader->headerCRC16;	// Header Checksum, CRC-16 of [000h-15Dh]
 	*((u16*)0x027FF80A) = ndsHeader->secureCRC16;	// Secure Area Checksum, CRC-16 of [ [20h]..7FFFh]
 	*((u16*)0x027FF850) = 0x5835;
+	*((u32*)0x027FF860) = (u32)ndsHeader->arm7executeAddress;
+		
 	// Extra bits
 	*((u16*)0x027FF869) = 0x03FE;
 	*((u16*)0x027FF874) = 0x4F5D;
@@ -467,44 +486,55 @@ static void setMemoryAddress(const tNDSHeader* ndsHeader) {
 	*((u16*)0x027FFC10) = 0x5835;
 	*((u16*)0x027FFC40) = 0x01;						// Boot Indicator -- EXTREMELY IMPORTANT!!! Thanks to cReDiAr
 	
-	tonccpy((void*)0x027FF860, (void*)0x027FFE34, 0x4);
+	(*(vu32*)0x027FFFF4) = 0;
 	
 	// Smaller copy of header? This is what's present in memory during DS firmware boot up at least...
-	// copyLoop((u32*)0x0235621C, (u32*)NDS_HEADER, 0xE0);
-	// *((u32*)0x0235621C) = 0xFFFFFFFF;
-	copyLoop((u32*)0x023FF000, (u32*)0x027FF000, 0x1000);
+	copyLoop((u32*)0x0235621C, (u32*)NDS_HEADER, 0xE0);
+	*((u32*)0x0235621C) = 0xFFFFFFFF;
 	
-	(*(vu32*)0x027FFFF4) = 0;
+	*((u32*)0x027FFE38) = (u32)NTR_CARTARM7;
+	
+	copyLoop((u32*)0x023FF000, (u32*)0x027FF000, 0x1000);
+	// arm7_clearmem((u32*)NDS_HEADER_POKEMON, 0x170);
+	// arm7_clearmem((u32*)TWL_HEADER, 0x170);
 }
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // Main function
 void arm7_main (void) {
-	
 	u32 errorCode;
 	bool noFile = false;
-	bool noCart = ((REG_SCFG_MC == 0x11) || (REG_SCFG_MC == 0x10));
-
-	// Init card
-	if(!FAT_InitFiles(true))noFile = true;
+	hasCart = (firmData->hasCart != 0xFF);
+	builtInFirm = (firmData->builtInFirm != 0xFF);
+	storedFileCluster = firmData->storedFileCluster;
+	
+	if (builtInFirm) {
+		firmA9Location = firmData->firmA9Location;
+		firmA9Destination = firmData->firmA9Destination;
+		firmA9Entry = firmData->firmA9Entry;
+		firmA9Size = firmData->firmA9Size;
+		firmA7Location = firmData->firmA7Location;
+		firmA7Destination = firmData->firmA7Destination;
+		firmA7Entry = firmData->firmA7Entry;
+		firmA7Size = firmData->firmA7Size;
+	}
 	
 	aFile file;
-
-	if (!noFile) {
-		getFileFromCluster(&file, storedFileCluster);
-		if ((file.firstCluster < CLUSTER_FIRST) || (file.firstCluster >= CLUSTER_EOF) || (file.firstCluster == CLUSTER_FREE))noFile = true;
+	
+	if (!builtInFirm) {
+		// Init card
+		if(!FAT_InitFiles(true))noFile = true;
+		if (!noFile) {
+			getFileFromCluster(&file, storedFileCluster);
+			if ((file.firstCluster < CLUSTER_FIRST) || (file.firstCluster >= CLUSTER_EOF) || (file.firstCluster == CLUSTER_FREE))noFile = true;
+		}
 	}
-		
+
 	if (REG_SCFG_EXT & BIT(31)) {
-		/* *((vu32*)REG_MBK1)=0x8D898581;
-		*((vu32*)REG_MBK2)=0x8C888480;
-		*((vu32*)REG_MBK3)=0x9C989490;
-		*((vu32*)REG_MBK4)=0x8C888480;
-		*((vu32*)REG_MBK5)=0x9C989490;*/
+		REG_MBK9=0xFCFFFF0F;
 		REG_MBK6=0x09403900;
 		REG_MBK7=0x09803940;
 		REG_MBK8=0x09C03980;
-		REG_MBK9=0xFCFFFF0F;
 	}
 	
 	// Synchronise start
@@ -519,25 +549,25 @@ void arm7_main (void) {
 	ipcSendState(ARM7_MEMCLR);
 
 	// Get ARM7 to clear RAM
-	arm7_resetMemory(noCart);
+	arm7_resetMemory();
 	
-	if (REG_SNDEXTCNT != 0) {
-		if (REG_SCFG_EXT & BIT(31))REG_SCFG_ROM = 0x703;
-	}
-
+	if (REG_SCFG_EXT & BIT(31))REG_SCFG_ROM = 0x703;
+	
 	errorOutput(ERR_STS_LOAD_BIN, false);
 	
 	ipcSendState(ARM7_LOADBIN);
 
 	if (noFile)errorOutput(ERR_FIRMNOTFOUND, true);
 
-	// Load the NDS file
-	if (!noFile)arm7_loadFirmBinary(&file);
-	
-	if (!noCart) {
+	if (hasCart) {
 		errorCode = arm7_loadBinary();
 		if (errorCode)errorOutput(errorCode, true);
+		setMemoryAddress(ndsHeader);
+		// fileWrite((char*)0x027FF000, &file, 0x083930, 0x1000);
 	}
+
+	// Load the NDS file
+	if (!noFile)arm7_loadFirmBinary(&file);
 	
 	if (REG_SNDEXTCNT != 0 && (REG_SCFG_EXT & BIT(31))) {
 		if (cdcReadReg(CDC_SOUND, 0x22) == 0xF0) {
@@ -552,11 +582,9 @@ void arm7_main (void) {
 	}
 	
 	errorOutput(ERR_STS_STARTBIN, false);
-
-	if (!noCart)setMemoryAddress(ndsHeader);
 	
 	ipcSendState(ARM7_BOOTBIN);
-
+	
 	arm7_reset();
 }
 
